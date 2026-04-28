@@ -14,8 +14,6 @@ id = "890fe93c5a984a43ba82c9c2fe26a51d"
 crons = ["55 15 * * *"]
 
 [vars]
+SUB_STORE_FRONTEND_BACKEND_PATH = "/Glsg9514JAgfYFJ"
 # SUB_STORE_FRONTEND_BACKEND_PATH = "/你的密码"
 # SUB_STORE_PUSH_SERVICE = "https://api.day.app/你的BarkKey/[推送标题]/[推送内容]"
-
-[vars]
-SUB_STORE_FRONTEND_BACKEND_PATH = "/Glsg9514JAgfYFJ"

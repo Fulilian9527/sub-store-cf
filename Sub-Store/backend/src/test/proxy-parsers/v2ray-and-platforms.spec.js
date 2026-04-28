@@ -657,9 +657,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-max-each-post-bytes': 1000000,
@@ -675,6 +673,30 @@ describe('VMess and VLESS parser coverage', function () {
             });
             expect(proxy).to.not.have.property('_extra');
             expect(proxy).to.not.have.property('_extra_unsupported');
+        });
+
+        it('keeps existing xhttp Host headers separate from URI host params', function () {
+            const obfsParam = JSON.stringify({
+                Host: 'header.example.com',
+                'X-Test': 'demo',
+            });
+            const proxy = parseOne(
+                `vless://${UUID}@vless-xhttp.example.com:443?type=xhttp&security=tls&obfsParam=${encodeURIComponent(
+                    obfsParam,
+                )}&path=%2Fxhttp#VLESS%20XHTTP%20Host%20Header`,
+            );
+
+            expectSubset(proxy, {
+                network: 'xhttp',
+                'xhttp-opts': {
+                    path: '/xhttp',
+                    headers: {
+                        Host: 'header.example.com',
+                        'X-Test': 'demo',
+                    },
+                },
+            });
+            expect(proxy['xhttp-opts']).to.not.have.property('host');
         });
 
         it('parses xhttp VLESS shares with downloadSettings extra', function () {
@@ -721,9 +743,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         server: 'download.example.com',
                         port: 8443,
@@ -777,9 +797,7 @@ describe('VMess and VLESS parser coverage', function () {
                 network: 'xhttp',
                 'xhttp-opts': {
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         server: 'download.example.com',
                         port: 8443,
@@ -817,9 +835,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         network: 'xhttp',
                     },
@@ -860,9 +876,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         network: 'xhttp',
                     },
@@ -906,9 +920,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         network: 'xhttp',
                         server: 'download.example.com',
@@ -943,9 +955,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                 },
             });
             expect(proxy).to.not.have.property('_extra_unsupported');
@@ -981,9 +991,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-min-posts-interval-ms': '100-300',
@@ -1028,9 +1036,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-min-posts-interval-ms': 300,
@@ -1075,9 +1081,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-min-posts-interval-ms': '0-300',
@@ -1127,9 +1131,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-max-each-post-bytes': 1000000,
@@ -1182,9 +1184,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-max-each-post-bytes': 1000000,
@@ -1244,9 +1244,7 @@ describe('VMess and VLESS parser coverage', function () {
                     'xhttp-opts': {
                         mode: 'stream-up',
                         path: '/xhttp',
-                        headers: {
-                            Host: 'cdn.example.com',
-                        },
+                        host: 'cdn.example.com',
                         'no-grpc-header': true,
                         'x-padding-bytes': '64-128',
                         'reuse-settings': {
@@ -1301,9 +1299,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         server: 'download.example.com',
                         port: 8443,
@@ -1414,8 +1410,8 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
+                    host: 'cdn.example.com',
                     headers: {
-                        Host: 'cdn.example.com',
                         'X-Test': 'demo',
                     },
                     'no-grpc-header': true,
@@ -1512,9 +1508,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'reuse-settings': {
                         'max-connections': '8',
                         'max-concurrency': '8-16',
@@ -1554,9 +1548,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         server: 'download.example.com',
                         port: 8443,
@@ -1593,9 +1585,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         server: 'download.example.com',
                         port: 8443,
@@ -1646,9 +1636,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'download-settings': {
                         server: 'download.example.com',
                         port: 8443,
@@ -1699,9 +1687,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-max-each-post-bytes': 1000000,
@@ -1746,9 +1732,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-max-each-post-bytes': 1000000,
@@ -1793,9 +1777,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'xhttp-opts': {
                     mode: 'stream-up',
                     path: '/xhttp',
-                    headers: {
-                        Host: 'cdn.example.com',
-                    },
+                    host: 'cdn.example.com',
                     'no-grpc-header': true,
                     'x-padding-bytes': '64-128',
                     'sc-max-each-post-bytes': 1000000,
@@ -1851,9 +1833,7 @@ describe('VMess and VLESS parser coverage', function () {
                     'xhttp-opts': {
                         mode: 'stream-up',
                         path: '/xhttp',
-                        headers: {
-                            Host: 'cdn.example.com',
-                        },
+                        host: 'cdn.example.com',
                         'no-grpc-header': true,
                         'x-padding-bytes': '64-128',
                         'reuse-settings': {
