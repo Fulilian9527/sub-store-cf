@@ -31,7 +31,7 @@ jobs:
           
           # 2. 智能合并：比对上游 main 分支的差异，并只将修改部分合并到你的子文件夹中
           # (如果原作者的默认分支叫 master，请将下面的 upstream1/main 改为 upstream1/master)
-          git merge -s subtree -X subtree=Sub-Store upstream1/main --allow-unrelated-histories --no-edit -m "自动合并项目1的最新修改" || echo "项目1无更新或存在合并冲突"
+          git merge -s subtree -X subtree=Sub-Store upstream1/master --allow-unrelated-histories --no-edit -m "自动合并项目1的最新修改" || echo "项目1无更新或存在合并冲突"
 
       - name: Sync Project 2 (Git Subtree Merge)
         run: |
