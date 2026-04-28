@@ -1,0 +1,46 @@
+name: "Auto Sync Modifed Parts"
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Your Repo
+        uses: actions/checkout@v4
+        with:
+          # ⚠️ 关键设置：必须设置为 0 获取完整历史，否则 Git 无法比对代码差异
+          fetch-depth: 0 
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync Project 1 (Git Subtree Merge)
+        run: |
+          # 1. 建立与原作者仓库的连接并拉取最新数据
+          git remote add upstream1 https://github.com/sub-store-org/Sub-Store.git
+          git fetch upstream1
+          
+          # 2. 智能合并：比对上游 main 分支的差异，并只将修改部分合并到你的子文件夹中
+          # (如果原作者的默认分支叫 master，请将下面的 upstream1/main 改为 upstream1/master)
+          git merge -s subtree -X subtree=Sub-Store upstream1/main --allow-unrelated-histories --no-edit -m "自动合并项目1的最新修改" || echo "项目1无更新或存在合并冲突"
+
+      - name: Sync Project 2 (Git Subtree Merge)
+        run: |
+          # 同理合并第二个项目
+          git remote add upstream2 https://github.com/Yu9191/sub-store-workers.git
+          git fetch upstream2
+          git merge -s subtree -X subtree=sub-store-workers upstream2/main --allow-unrelated-histories --no-edit -m "自动合并项目2的最新修改" || echo "项目2无更新或存在合并冲突"
+
+      - name: Push changes
+        run: |
+          # 3. 将合并后的结果推送到你的 GitHub
+          git push
