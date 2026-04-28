@@ -1,9 +1,14 @@
-name: "Auto Sync Modifed Parts"
+name: "Daily Force Sync at 2AM"
 
 on:
   schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+    # 每天北京/新加坡时间凌晨 02:00 运行 (对应 UTC 18:00)
+    - cron: '0 18 * * *'
+  workflow_dispatch: # 保留手动触发按钮，方便随时测试
+
+env:
+  # 消除 Node.js 20 弃用警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   sync:
@@ -14,33 +19,35 @@ jobs:
     steps:
       - name: Checkout Your Repo
         uses: actions/checkout@v4
-        with:
-          # ⚠️ 关键设置：必须设置为 0 获取完整历史，否则 Git 无法比对代码差异
-          fetch-depth: 0 
 
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Sync Project 1 (Git Subtree Merge)
+      - name: Sync Project 1
         run: |
-          # 1. 建立与原作者仓库的连接并拉取最新数据
-          git remote add upstream1 https://github.com/sub-store-org/Sub-Store.git
-          git fetch upstream1
-          
-          # 2. 智能合并：比对上游 main 分支的差异，并只将修改部分合并到你的子文件夹中
-          # (如果原作者的默认分支叫 master，请将下面的 upstream1/main 改为 upstream1/master)
-          git merge -s subtree -X subtree=Sub-Store upstream1/master --allow-unrelated-histories --no-edit -m "自动合并项目1的最新修改" || echo "项目1无更新或存在合并冲突"
+          # 克隆原项目（自动拉取默认分支，无论是 master 还是 main）
+          git clone --depth=1 https://github.com/sub-store-org/Sub-Store.git temp_p1
+          # 清空并覆盖文件夹
+          rm -rf Sub-Store/*
+          cp -rn temp_p1/* Sub-Store/
+          rm -rf temp_p1
 
-      - name: Sync Project 2 (Git Subtree Merge)
+      - name: Sync Project 2
         run: |
-          # 同理合并第二个项目
-          git remote add upstream2 https://github.com/Yu9191/sub-store-workers.git
-          git fetch upstream2
-          git merge -s subtree -X subtree=sub-store-workers upstream2/main --allow-unrelated-histories --no-edit -m "自动合并项目2的最新修改" || echo "项目2无更新或存在合并冲突"
+          git clone --depth=1 https://github.com/Yu9191/sub-store-workers.git temp_p2
+          rm -rf sub-store-workers/*
+          cp -rn temp_p2/* sub-store-workers/
+          rm -rf temp_p2
 
-      - name: Push changes
+      - name: Commit and Push
         run: |
-          # 3. 将合并后的结果推送到你的 GitHub
-          git push
+          git add .
+          # 只有检测到实际文件变化时才提交
+          if [ -n "$(git status --porcelain)" ]; then
+            git commit -m "每日定时同步：已更新至原仓库最新版本"
+            git push
+          else
+            echo "今日无新代码，跳过同步"
+          fi
