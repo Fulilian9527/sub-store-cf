@@ -675,7 +675,7 @@ describe('VMess and VLESS parser coverage', function () {
             expect(proxy).to.not.have.property('_extra_unsupported');
         });
 
-        it('keeps existing xhttp Host headers separate from URI host params', function () {
+        it('moves xhttp Host from obfsParam to xhttp-opts.host', function () {
             const obfsParam = JSON.stringify({
                 Host: 'header.example.com',
                 'X-Test': 'demo',
@@ -689,14 +689,16 @@ describe('VMess and VLESS parser coverage', function () {
             expectSubset(proxy, {
                 network: 'xhttp',
                 'xhttp-opts': {
+                    host: 'header.example.com',
                     path: '/xhttp',
                     headers: {
-                        Host: 'header.example.com',
                         'X-Test': 'demo',
                     },
                 },
             });
-            expect(proxy['xhttp-opts']).to.not.have.property('host');
+            expect(proxy['xhttp-opts']).to.not.have.nested.property(
+                'headers.Host',
+            );
         });
 
         it('parses xhttp VLESS shares with downloadSettings extra', function () {
@@ -1515,9 +1517,9 @@ describe('VMess and VLESS parser coverage', function () {
                     },
                 },
             });
-            expect(proxy['xhttp-opts']?.['reuse-settings']).to.not.have.property(
-                'h-keep-alive-period',
-            );
+            expect(
+                proxy['xhttp-opts']?.['reuse-settings'],
+            ).to.not.have.property('h-keep-alive-period');
             expect(proxy._extra_unsupported).to.deep.equal({
                 xmux: {
                     hKeepAlivePeriod: '9007199254740993',
