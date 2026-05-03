@@ -38,7 +38,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/Yu9191/sub-store-workers.git temp_p2
           rm -rf sub-store-workers/*
-          cp -rn temp_p2/* sub-store-workers/
+          cp -rn temp_p2/* ./
           rm -rf temp_p2
 
           # 3. 👇 核心步骤：自动注入你的私人配置
