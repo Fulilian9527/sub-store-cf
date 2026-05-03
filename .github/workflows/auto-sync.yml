@@ -34,14 +34,20 @@ jobs:
           cp -rn temp_p1/* Sub-Store/
           rm -rf temp_p1
 
-      - name: Sync Project 2
+      - name: Sync Project 1
         run: |
+          # 1. 下载原作者最新代码
           git clone --depth=1 https://github.com/Yu9191/sub-store-workers.git temp_p2
-          rm -rf sub-store-workers/*
-          cp -rn temp_p2/* ./
+          
+          # 2. 确保你的子文件夹存在（防呆设计）
+          mkdir -p sub-store-workers
+          
+          # 3. 强制把新代码覆盖进去（使用 -rf，彻底消除原来的黄色警告）
+          cp -rf temp_p2/* sub-store-workers/
           rm -rf temp_p2
+          
 
-          # 3. 👇 核心步骤：自动注入你的私人配置
+          # 4. 👇 核心步骤：自动注入你的私人配置
           # 替换 KV ID
           sed -i 's/你的KV命名空间ID/890fe93c5a984a43ba82c9c2fe26a51d/g' sub-store-workers/wrangler.toml
           
