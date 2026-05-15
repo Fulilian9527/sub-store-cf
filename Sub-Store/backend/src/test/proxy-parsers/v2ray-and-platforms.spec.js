@@ -2859,7 +2859,7 @@ describe('Platform raw-format parser coverage', function () {
             },
             {
                 title: 'parses trust-tunnel lines',
-                input: 'Surge TrustTunnel = trust-tunnel,surge-trust.example.com,443,username=user,password=secret,sni=sni.example.com,skip-cert-verify=true,reuse=true',
+                input: 'Surge TrustTunnel = trust-tunnel,surge-trust.example.com,443,username=user,password=secret,headers=X-Client:Surge;X-Token:abc,sni=sni.example.com,skip-cert-verify=true,reuse=true',
                 expected: {
                     type: 'trusttunnel',
                     name: 'Surge TrustTunnel',
@@ -2868,9 +2868,113 @@ describe('Platform raw-format parser coverage', function () {
                     username: 'user',
                     password: 'secret',
                     tls: true,
+                    headers: {
+                        'X-Client': 'Surge',
+                        'X-Token': 'abc',
+                    },
                     sni: 'sni.example.com',
                     'skip-cert-verify': true,
                     reuse: true,
+                },
+            },
+            {
+                title: 'parses h2-connect lines with dynamic headers',
+                input: 'Surge H2 = h2-connect,h2.example.com,443,headers=X-Padding:<random-string(16-32)>,sni=sni.example.com,skip-cert-verify=true',
+                expected: {
+                    type: 'h2-connect',
+                    name: 'Surge H2',
+                    server: 'h2.example.com',
+                    port: 443,
+                    tls: true,
+                    headers: {
+                        'X-Padding': '<random-string(16-32)>',
+                    },
+                    sni: 'sni.example.com',
+                    'skip-cert-verify': true,
+                },
+            },
+            {
+                title: 'keeps quoted Surge headers with semicolons inside User-Agent values',
+                input: '1=http,163.177.17.6,443,headers="Host:153.3.236.22:443;X-T5-Auth:683556433;Connection:Keep-Alive;User-Agent:okhttp/3.11.0 Dalvik/2.1.0 (Linux; U; Android 11; Redmi K30 5G Build/RKQ1.200826.002) baiduboxapp/11.0.5.12 (Baidu; P1 11)"',
+                expected: {
+                    type: 'http',
+                    name: '1',
+                    server: '163.177.17.6',
+                    port: 443,
+                    headers: {
+                        Host: '153.3.236.22:443',
+                        'X-T5-Auth': '683556433',
+                        Connection: 'Keep-Alive',
+                        'User-Agent':
+                            'okhttp/3.11.0 Dalvik/2.1.0 (Linux; U; Android 11; Redmi K30 5G Build/RKQ1.200826.002) baiduboxapp/11.0.5.12 (Baidu; P1 11)',
+                    },
+                },
+            },
+            {
+                title: 'parses quoted Surge header keys and values',
+                input: `Surge Quoted Headers = https,quoted.example.com,443,headers='Host':'153.3.236.22:443';"X-T5-Auth":"683556433";Connection:"Keep-Alive";"User-Agent":"okhttp/3.11.0 Dalvik/2.1.0 (Linux; U; Android 11; Redmi K30 5G Build/RKQ1.200826.002) baiduboxapp/11.0.5.12 (Baidu; P1 11)",sni=sni.example.com`,
+                expected: {
+                    type: 'http',
+                    name: 'Surge Quoted Headers',
+                    server: 'quoted.example.com',
+                    port: 443,
+                    tls: true,
+                    headers: {
+                        Host: '153.3.236.22:443',
+                        'X-T5-Auth': '683556433',
+                        Connection: 'Keep-Alive',
+                        'User-Agent':
+                            'okhttp/3.11.0 Dalvik/2.1.0 (Linux; U; Android 11; Redmi K30 5G Build/RKQ1.200826.002) baiduboxapp/11.0.5.12 (Baidu; P1 11)',
+                    },
+                    sni: 'sni.example.com',
+                },
+            },
+            {
+                title: 'parses Surge headers with nested quote values containing commas',
+                input: `Surge Nested Headers = https,nested.example.com,443,headers="Host:"nested.example.com";X-Comma:"a,b";User-Agent:"client/1.0 (Linux; U; Android 11)"",sni=sni.example.com`,
+                expected: {
+                    type: 'http',
+                    name: 'Surge Nested Headers',
+                    server: 'nested.example.com',
+                    port: 443,
+                    tls: true,
+                    headers: {
+                        Host: 'nested.example.com',
+                        'X-Comma': 'a,b',
+                        'User-Agent': 'client/1.0 (Linux; U; Android 11)',
+                    },
+                    sni: 'sni.example.com',
+                },
+            },
+            {
+                title: 'parses Surge headers with nested quote values containing quote characters',
+                input: `Surge Nested Quote Headers = https,quote.example.com,443,headers="X-Quote:"a"b";X-Semi:"x;y"",sni=sni.example.com`,
+                expected: {
+                    type: 'http',
+                    name: 'Surge Nested Quote Headers',
+                    server: 'quote.example.com',
+                    port: 443,
+                    tls: true,
+                    headers: {
+                        'X-Quote': 'a"b',
+                        'X-Semi': 'x;y',
+                    },
+                    sni: 'sni.example.com',
+                },
+            },
+            {
+                title: 'parses unwrapped Surge headers that start with quoted keys',
+                input: `Surge Quoted Key Start = http,quoted-key.example.com,8080,headers='Host':'quoted-key.example.com';"X-Token":"abc",test-url=http://example.com`,
+                expected: {
+                    type: 'http',
+                    name: 'Surge Quoted Key Start',
+                    server: 'quoted-key.example.com',
+                    port: 8080,
+                    headers: {
+                        Host: 'quoted-key.example.com',
+                        'X-Token': 'abc',
+                    },
+                    'test-url': 'http://example.com',
                 },
             },
             {
@@ -2951,7 +3055,7 @@ describe('Platform raw-format parser coverage', function () {
             },
             {
                 title: 'parses https auth lines',
-                input: 'Surge HTTPS = https,surge-http.example.com,8443,user,pass,sni=sni.example.com,skip-cert-verify=true',
+                input: 'Surge HTTPS = https,surge-http.example.com,8443,user,pass,headers=X-Token:abc,sni=sni.example.com,skip-cert-verify=true',
                 expected: {
                     type: 'http',
                     name: 'Surge HTTPS',
@@ -2960,6 +3064,9 @@ describe('Platform raw-format parser coverage', function () {
                     username: 'user',
                     password: 'pass',
                     tls: true,
+                    headers: {
+                        'X-Token': 'abc',
+                    },
                     sni: 'sni.example.com',
                     'skip-cert-verify': true,
                 },

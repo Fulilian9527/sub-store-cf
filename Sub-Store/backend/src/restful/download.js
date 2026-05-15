@@ -24,6 +24,22 @@ function buildEmptyNezhaPayload() {
     );
 }
 
+function getMihomoExternalOptions(query) {
+    const useMihomoExternal = query.target === 'SurgeMac';
+    const mihomoExternal = useMihomoExternal ? query.mihomoExternal : undefined;
+    const mihomoMerge = useMihomoExternal ? query.mihomoMerge : undefined;
+    const mihomoMergeName = useMihomoExternal
+        ? query.mihomoMergeName
+        : undefined;
+
+    return {
+        useMihomoExternal,
+        mihomoExternal,
+        mihomoMerge,
+        mihomoMergeName,
+    };
+}
+
 export default function register($app) {
     $app.get('/share/col/:name/:target', async (req, res) => {
         const { target } = req.params;
@@ -98,7 +114,8 @@ export default function register($app) {
 async function downloadSubscription(req, res) {
     let { name, nezhaIndex } = req.params;
 
-    const useMihomoExternal = req.query.target === 'SurgeMac';
+    const { useMihomoExternal, mihomoMerge, mihomoMergeName, mihomoExternal } =
+        getMihomoExternalOptions(req.query);
 
     const platform =
         req.query.platform ||
@@ -186,9 +203,18 @@ async function downloadSubscription(req, res) {
     if (prettyYaml) {
         $.info(`指定输出易读 YAML: ${prettyYaml}`);
     }
+    if (mihomoMerge) {
+        $.info(`指定合并 Mihomo External: ${mihomoMerge}`);
+    }
+    if (mihomoMergeName) {
+        $.info(`指定合并 Mihomo External 名称: ${mihomoMergeName}`);
+    }
 
     if (useMihomoExternal) {
         $.info(`手动指定了 target 为 SurgeMac, 将使用 Mihomo External`);
+    }
+    if (mihomoExternal) {
+        $.info(`手动指定了 Mihomo External 链接参数: ${mihomoExternal}`);
     }
 
     if (noCache) {
@@ -225,6 +251,9 @@ async function downloadSubscription(req, res) {
                 produceOpts: {
                     'include-unsupported-proxy': includeUnsupportedProxy,
                     useMihomoExternal,
+                    merge: mihomoMerge,
+                    mergeName: mihomoMergeName,
+                    mihomoExternal,
                     prettyYaml,
                 },
                 $options,
@@ -418,7 +447,8 @@ async function downloadSubscription(req, res) {
 async function downloadCollection(req, res) {
     let { name, nezhaIndex } = req.params;
 
-    const useMihomoExternal = req.query.target === 'SurgeMac';
+    const { useMihomoExternal, mihomoMerge, mihomoMergeName, mihomoExternal } =
+        getMihomoExternalOptions(req.query);
 
     const platform =
         req.query.platform ||
@@ -432,7 +462,6 @@ async function downloadCollection(req, res) {
     $.info(
         `正在下载组合订阅：${name}\n请求 User-Agent: ${reqUA}\n请求 target: ${req.query.target}\n实际输出: ${platform}`,
     );
-
     let {
         ignoreFailedRemoteSub,
         produceType,
@@ -491,9 +520,18 @@ async function downloadCollection(req, res) {
     if (prettyYaml) {
         $.info(`指定输出易读 YAML: ${prettyYaml}`);
     }
+    if (mihomoMerge) {
+        $.info(`指定合并 Mihomo External: ${mihomoMerge}`);
+    }
+    if (mihomoMergeName) {
+        $.info(`指定合并 Mihomo External 名称: ${mihomoMergeName}`);
+    }
 
     if (useMihomoExternal) {
         $.info(`手动指定了 target 为 SurgeMac, 将使用 Mihomo External`);
+    }
+    if (mihomoExternal) {
+        $.info(`手动指定了 Mihomo External 链接参数: ${mihomoExternal}`);
     }
     if (noCache) {
         $.info(`指定不使用缓存: ${noCache}`);
@@ -510,6 +548,9 @@ async function downloadCollection(req, res) {
                 produceOpts: {
                     'include-unsupported-proxy': includeUnsupportedProxy,
                     useMihomoExternal,
+                    merge: mihomoMerge,
+                    mergeName: mihomoMergeName,
+                    mihomoExternal,
                     prettyYaml,
                 },
                 $options,

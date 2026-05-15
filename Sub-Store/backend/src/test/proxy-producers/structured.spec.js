@@ -24,6 +24,18 @@ function captureWarns(fn) {
     }
 }
 
+function captureErrors(fn) {
+    const originalError = $.error;
+    const errors = [];
+    $.error = (message) => errors.push(message);
+    try {
+        const result = fn();
+        return { result, errors };
+    } finally {
+        $.error = originalError;
+    }
+}
+
 describe('Proxy structured producers', function () {
     it('filters unsupported Clash proxies by default and normalizes vmess ws early data', function () {
         const proxies = [
@@ -819,6 +831,31 @@ describe('Proxy structured producers', function () {
         expect(internal).to.have.length(0);
     });
 
+    it('does not let include-unsupported-proxy bypass malformed VLESS Reality validation', function () {
+        const proxy = {
+            type: 'vless',
+            name: 'Reality Empty Key',
+            server: 'vless.example.com',
+            port: 443,
+            uuid: UUID,
+            tls: true,
+            network: 'tcp',
+            'reality-opts': { 'public-key': '' },
+        };
+
+        const { result, errors } = captureErrors(() =>
+            produceInternal('Mihomo', proxy, {
+                'include-unsupported-proxy': true,
+            }),
+        );
+
+        expect(result).to.have.length(0);
+        expect(errors).to.have.length(1);
+        expect(errors[0]).to.include(
+            'Skipping VLESS Reality proxy Reality Empty Key: empty reality-opts.public-key',
+        );
+    });
+
     it('normalizes Stash TUIC defaults and external yaml wrapper', function () {
         const proxy = {
             type: 'tuic',
@@ -1236,6 +1273,217 @@ describe('Proxy structured producers', function () {
         expectSubset(external.proxies[0], {
             shadowsocks: {
                 name: 'ShadowTLS SS',
+            },
+        });
+    });
+
+    it('emits Egern HTTP and HTTPS root headers', function () {
+        const proxies = [
+            {
+                type: 'http',
+                name: 'Egern HTTP Headers',
+                server: 'http.example.com',
+                port: 8080,
+                username: 'user',
+                password: 'pass',
+                headers: {
+                    'X-Client': 'Egern',
+                    'X-Token': 'abc',
+                },
+            },
+            {
+                type: 'http',
+                name: 'Egern HTTPS Headers',
+                server: 'https.example.com',
+                port: 443,
+                tls: true,
+                sni: 'sni.example.com',
+                headers: {
+                    'X-Padding': '<random-string(16-32)>',
+                },
+            },
+        ];
+
+        const internal = produceInternal('Egern', proxies);
+        const external = loadProducedYaml('Egern', proxies);
+
+        expectSubset(internal[0], {
+            http: {
+                name: 'Egern HTTP Headers',
+                headers: {
+                    'X-Client': 'Egern',
+                    'X-Token': 'abc',
+                },
+            },
+        });
+        expectSubset(internal[1], {
+            https: {
+                name: 'Egern HTTPS Headers',
+                headers: {
+                    'X-Padding': '<random-string(16-32)>',
+                },
+            },
+        });
+        expectSubset(external.proxies[0], {
+            http: {
+                headers: {
+                    'X-Client': 'Egern',
+                    'X-Token': 'abc',
+                },
+            },
+        });
+        expectSubset(external.proxies[1], {
+            https: {
+                headers: {
+                    'X-Padding': '<random-string(16-32)>',
+                },
+            },
+        });
+    });
+
+    it('keeps Mihomo HTTP headers and filters unsupported h2-connect/trusttunnel header variants', function () {
+        const { result, errors } = captureErrors(() =>
+            produceInternal('Mihomo', [
+                {
+                    type: 'http',
+                    name: 'Mihomo HTTPS Headers',
+                    server: 'https.example.com',
+                    port: 443,
+                    tls: true,
+                    headers: {
+                        'X-Token': 'abc',
+                    },
+                },
+                {
+                    type: 'h2-connect',
+                    name: 'Mihomo H2 Headers',
+                    server: 'h2.example.com',
+                    port: 443,
+                    headers: {
+                        'X-Padding': '<random-string(16)>',
+                    },
+                },
+                {
+                    type: 'trusttunnel',
+                    name: 'Mihomo Trust Headers',
+                    server: 'trust.example.com',
+                    port: 443,
+                    headers: {
+                        'X-Client': 'Surge',
+                    },
+                },
+            ]),
+        );
+
+        expect(result).to.have.length(1);
+        expectSubset(result[0], {
+            type: 'http',
+            name: 'Mihomo HTTPS Headers',
+            headers: {
+                'X-Token': 'abc',
+            },
+        });
+        expect(errors).to.have.length(2);
+        expect(errors[0]).to.include(
+            'Target platform Mihomo does not support headers for HTTP/2 CONNECT proxy Mihomo H2 Headers',
+        );
+        expect(errors[1]).to.include(
+            'Target platform Mihomo does not support headers for TrustTunnel proxy Mihomo Trust Headers',
+        );
+    });
+
+    it('keeps Mihomo h2-connect/trusttunnel header variants when include-unsupported-proxy is enabled', function () {
+        const { result, errors } = captureErrors(() =>
+            produceInternal(
+                'Mihomo',
+                [
+                    {
+                        type: 'h2-connect',
+                        name: 'Mihomo H2 Headers',
+                        server: 'h2.example.com',
+                        port: 443,
+                        headers: {
+                            'X-Padding': '<random-string(16)>',
+                        },
+                    },
+                    {
+                        type: 'trusttunnel',
+                        name: 'Mihomo Trust Headers',
+                        server: 'trust.example.com',
+                        port: 443,
+                        headers: {
+                            'X-Client': 'Surge',
+                        },
+                    },
+                ],
+                { 'include-unsupported-proxy': true },
+            ),
+        );
+
+        expect(result).to.have.length(2);
+        expectSubset(result[0], {
+            type: 'h2-connect',
+            name: 'Mihomo H2 Headers',
+            headers: {
+                'X-Padding': '<random-string(16)>',
+            },
+        });
+        expectSubset(result[1], {
+            type: 'trusttunnel',
+            name: 'Mihomo Trust Headers',
+            headers: {
+                'X-Client': 'Surge',
+            },
+        });
+        expect(errors).to.have.length(0);
+    });
+
+    it('preserves supported HTTP root headers for sing-box and JSON outputs', function () {
+        const buildProxy = (name) => ({
+            type: 'http',
+            name,
+            server: 'http.example.com',
+            port: 8080,
+            username: 'user',
+            password: 'pass',
+            headers: {
+                'X-Token': 'abc',
+            },
+        });
+
+        const singBoxInternal = produceInternal(
+            'sing-box',
+            buildProxy('sing-box HTTP Headers'),
+        );
+        const singBoxExternal = loadProducedJson(
+            'sing-box',
+            buildProxy('sing-box HTTP Headers'),
+        );
+        const jsonExternal = loadProducedJson(
+            'JSON',
+            buildProxy('JSON HTTP Headers'),
+        );
+
+        expect(singBoxInternal).to.have.length(1);
+        expectSubset(singBoxInternal[0], {
+            type: 'http',
+            tag: 'sing-box HTTP Headers',
+            headers: {
+                'X-Token': 'abc',
+            },
+        });
+        expectSubset(singBoxExternal.outbounds[0], {
+            type: 'http',
+            tag: 'sing-box HTTP Headers',
+            headers: {
+                'X-Token': 'abc',
+            },
+        });
+        expectSubset(jsonExternal[0], {
+            type: 'http',
+            name: 'JSON HTTP Headers',
+            headers: {
+                'X-Token': 'abc',
             },
         });
     });
@@ -2039,6 +2287,96 @@ describe('Proxy structured producers', function () {
         });
         expect(outbound).to.not.have.property('multiplex');
         expect(outbound.plugin_opts).to.include('mux=0');
+    });
+
+    it('maps mihomo udp capability flags to sing-box network only when disabling UDP', function () {
+        const output = loadProducedJson('sing-box', [
+            {
+                type: 'ss',
+                name: 'SS UDP On',
+                server: 'ss-on.example.com',
+                port: 8388,
+                cipher: 'aes-128-gcm',
+                password: 'secret',
+                udp: true,
+            },
+            {
+                type: 'ss',
+                name: 'SS UDP Off',
+                server: 'ss-off.example.com',
+                port: 8388,
+                cipher: 'aes-128-gcm',
+                password: 'secret',
+                udp: false,
+            },
+            {
+                type: 'ss',
+                name: 'SS Network Override',
+                server: 'ss-override.example.com',
+                port: 8388,
+                cipher: 'aes-128-gcm',
+                password: 'secret',
+                udp: false,
+                _network: 'udp',
+            },
+        ]);
+
+        const udpOn = output.outbounds.find((item) => item.tag === 'SS UDP On');
+        const udpOff = output.outbounds.find(
+            (item) => item.tag === 'SS UDP Off',
+        );
+        const networkOverride = output.outbounds.find(
+            (item) => item.tag === 'SS Network Override',
+        );
+
+        expect(udpOn).to.not.have.property('network');
+        expect(udpOff).to.have.property('network', 'tcp');
+        expect(networkOverride).to.have.property('network', 'udp');
+    });
+
+    it('does not emit sing-box network for protocols without sing-box network options', function () {
+        const output = loadProducedJson('sing-box', [
+            {
+                type: 'anytls',
+                name: 'AnyTLS No Network',
+                server: 'anytls.example.com',
+                port: 443,
+                password: 'secret',
+                udp: false,
+                _network: 'udp',
+            },
+            {
+                type: 'tailscale',
+                name: 'Tailscale No Network',
+                udp: false,
+                _network: 'udp',
+            },
+            {
+                type: 'wireguard',
+                name: 'WireGuard No Network',
+                server: 'wg.example.com',
+                port: 51820,
+                'private-key': 'private-key',
+                'public-key': 'public-key',
+                ip: '10.0.0.2',
+                udp: false,
+                _network: 'udp',
+            },
+        ]);
+
+        const anytls = output.outbounds.find(
+            (item) => item.tag === 'AnyTLS No Network',
+        );
+        const tailscale = output.endpoints.find(
+            (item) => item.tag === 'Tailscale No Network',
+        );
+        const wireguard = output.endpoints.find(
+            (item) => item.tag === 'WireGuard No Network',
+        );
+
+        expect(anytls).to.not.have.property('network');
+        expect(tailscale).to.not.have.property('network');
+        expect(wireguard).to.not.have.property('network');
     });
 
     it('emits sing-box outbounds with reality tls and websocket transport', function () {
