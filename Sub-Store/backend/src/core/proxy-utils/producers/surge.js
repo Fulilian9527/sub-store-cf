@@ -32,16 +32,15 @@ function stripSurgeQuotes(value) {
         (quote === '"' || quote === "'") &&
         trimmed[trimmed.length - 1] === quote
     ) {
-        return trimmed.slice(1, -1).replace(/\\(["'\\])/g, '$1');
+        return trimmed.slice(1, -1);
     }
 
-    return trimmed.replace(/\\(["'\\])/g, '$1');
+    return trimmed;
 }
 
 function quoteSurgeValue(value) {
-    return `"${String(stripSurgeQuotes(value))
-        .replace(/\\/g, '\\\\')
-        .replace(/"/g, '\\"')}"`;
+    const text = String(stripSurgeQuotes(value));
+    return `"${text}"`;
 }
 
 function hasNonBlankValue(value) {
@@ -244,7 +243,7 @@ function shadowsocks(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -261,7 +260,7 @@ function shadowsocks(proxy) {
         const host = proxy['plugin-opts'].host;
         const version = proxy['plugin-opts'].version;
         if (password) {
-            result.append(`,shadow-tls-password=${password}`);
+            result.append(`,shadow-tls-password="${password}"`);
             if (host) {
                 result.append(`,shadow-tls-sni=${host}`);
             }
@@ -353,7 +352,7 @@ function trojan(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -571,7 +570,7 @@ function h2Connect(proxy) {
     result.appendIfPresent(`,interface=${proxy['interface']}`, 'interface');
 
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -659,7 +658,7 @@ function vmess(proxy, includeUnsupportedProxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -803,7 +802,7 @@ function http(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -934,7 +933,7 @@ function socks5(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -961,30 +960,30 @@ function socks5(proxy) {
 function appendHeaders(result, proxy) {
     const value = formatHeaders(proxy.headers);
     if (isNotBlank(value)) {
-        result.append(`,headers="${value}"`);
+        result.append(`,headers=${quoteSurgeValue(value)}`);
     }
 }
 
 function formatHeaders(headers) {
+    return formatHeaderMap(headers, ';');
+}
+
+function formatHeaderMap(headers, separator) {
     if (!headers || typeof headers !== 'object') {
         return '';
     }
 
     return Object.entries(headers)
         .filter(([key, value]) => isNotBlank(key) && value != null)
-        .map(([key, value]) => `${key}:"${escapeHeaderValue(value)}"`)
-        .join(';');
-}
-
-function escapeHeaderValue(value) {
-    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        .map(([key, value]) => `${key}:${quoteSurgeValue(value)}`)
+        .join(separator);
 }
 
 function snell(proxy) {
     const result = new Result(proxy);
     result.append(`${proxy.name}=${proxy.type},${proxy.server},${proxy.port}`);
     result.appendIfPresent(`,version=${proxy.version}`, 'version');
-    result.appendIfPresent(`,psk=${proxy.psk}`, 'psk');
+    result.appendIfPresent(`,psk="${proxy.psk}"`, 'psk');
 
     const ip_version = ipVersions[proxy['ip-version']] || proxy['ip-version'];
     result.appendIfPresent(`,ip-version=${ip_version}`, 'ip-version');
@@ -1035,7 +1034,7 @@ function snell(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -1140,7 +1139,7 @@ function tuic(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -1218,7 +1217,7 @@ function wireguard(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -1319,7 +1318,7 @@ function wireguard_surge(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -1415,7 +1414,7 @@ function hysteria2(proxy) {
 
     // shadow-tls
     if (isPresent(proxy, 'shadow-tls-password')) {
-        result.append(`,shadow-tls-password=${proxy['shadow-tls-password']}`);
+        result.append(`,shadow-tls-password="${proxy['shadow-tls-password']}"`);
 
         result.appendIfPresent(
             `,shadow-tls-version=${proxy['shadow-tls-version']}`,
@@ -1458,17 +1457,9 @@ function handleTransport(result, proxy, includeUnsupportedProxy) {
                 );
                 if (isPresent(proxy, 'ws-opts.headers')) {
                     const headers = proxy['ws-opts'].headers;
-                    const value = Object.keys(headers)
-                        .map((k) => {
-                            let v = headers[k];
-                            // if (['Host'].includes(k)) {
-                            v = `"${v}"`;
-                            // }
-                            return `${k}:${v}`;
-                        })
-                        .join('|');
+                    const value = formatHeaderMap(headers, '|');
                     if (isNotBlank(value)) {
-                        result.append(`,ws-headers=${value}`);
+                        result.append(`,ws-headers=${quoteSurgeValue(value)}`);
                     }
                 }
             }
