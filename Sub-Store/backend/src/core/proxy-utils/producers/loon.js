@@ -3,6 +3,7 @@ const targetPlatform = 'Loon';
 import { isPresent, Result } from './utils';
 import { isIPv4, isIPv6 } from '@/utils';
 import $ from '@/core/app';
+import { formatLoonVmessSecurity } from '../vmess-security';
 
 const ipVersions = {
     dual: 'dual',
@@ -60,6 +61,15 @@ export default function Loon_Producer() {
         );
     };
     return { produce };
+}
+
+function appendTlsProfile(result, proxy) {
+    if (
+        isPresent(proxy, 'client-fingerprint') &&
+        `${proxy['client-fingerprint']}`.trim() !== ''
+    ) {
+        result.append(`,tls-profile=${proxy['client-fingerprint']}`);
+    }
 }
 
 function shadowsocks(proxy) {
@@ -305,6 +315,7 @@ function trojan(proxy) {
         `,skip-cert-verify=${proxy['skip-cert-verify']}`,
         'skip-cert-verify',
     );
+    appendTlsProfile(result, proxy);
 
     // sni
     result.appendIfPresent(`,tls-name=${proxy.sni}`, 'sni');
@@ -360,6 +371,7 @@ function anytls(proxy) {
         `,skip-cert-verify=${proxy['skip-cert-verify']}`,
         'skip-cert-verify',
     );
+    appendTlsProfile(result, proxy);
 
     // sni
     result.appendIfPresent(`,tls-name=${proxy.sni}`, 'sni');
@@ -394,10 +406,11 @@ function anytls(proxy) {
 
 function vmess(proxy) {
     const isReality = !!proxy['reality-opts'];
+    const security = formatLoonVmessSecurity(proxy.cipher);
 
     const result = new Result(proxy);
     result.append(
-        `${proxy.name}=vmess,${proxy.server},${proxy.port},${proxy.cipher},"${proxy.uuid}"`,
+        `${proxy.name}=vmess,${proxy.server},${proxy.port},${security},"${proxy.uuid}"`,
     );
     if (proxy.network === 'tcp') {
         delete proxy.network;
@@ -441,6 +454,9 @@ function vmess(proxy) {
         `,skip-cert-verify=${proxy['skip-cert-verify']}`,
         'skip-cert-verify',
     );
+    if (proxy.tls || isReality) {
+        appendTlsProfile(result, proxy);
+    }
 
     if (isReality) {
         result.appendIfPresent(`,sni=${proxy.sni}`, 'sni');
@@ -551,6 +567,9 @@ function vless(proxy) {
         `,skip-cert-verify=${proxy['skip-cert-verify']}`,
         'skip-cert-verify',
     );
+    if (proxy.tls || isReality || isXtls) {
+        appendTlsProfile(result, proxy);
+    }
 
     if (isXtls) {
         result.appendIfPresent(`,flow=${proxy.flow}`, 'flow');
@@ -612,6 +631,9 @@ function http(proxy) {
         `,skip-cert-verify=${proxy['skip-cert-verify']}`,
         'skip-cert-verify',
     );
+    if (proxy.tls) {
+        appendTlsProfile(result, proxy);
+    }
 
     // tfo
     result.appendIfPresent(`,tfo=${proxy.tfo}`, 'tfo');
@@ -645,6 +667,9 @@ function socks5(proxy) {
         `,skip-cert-verify=${proxy['skip-cert-verify']}`,
         'skip-cert-verify',
     );
+    if (proxy.tls) {
+        appendTlsProfile(result, proxy);
+    }
 
     // tfo
     result.appendIfPresent(`,tfo=${proxy.tfo}`, 'tfo');
@@ -774,6 +799,7 @@ function hysteria2(proxy) {
         `,skip-cert-verify=${proxy['skip-cert-verify']}`,
         'skip-cert-verify',
     );
+    appendTlsProfile(result, proxy);
 
     if (proxy['obfs-password'] && proxy.obfs == 'salamander') {
         result.append(`,salamander-password=${proxy['obfs-password']}`);

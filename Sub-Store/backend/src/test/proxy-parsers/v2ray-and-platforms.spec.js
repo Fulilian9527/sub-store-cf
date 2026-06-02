@@ -151,6 +151,30 @@ describe('VMess and VLESS parser coverage', function () {
             });
         });
 
+        it('keeps supported zero VMess security values', function () {
+            const share = Base64.encode(
+                JSON.stringify({
+                    ps: 'VMess Zero Security',
+                    add: 'vmess-zero.example.com',
+                    port: '443',
+                    id: UUID,
+                    aid: '0',
+                    scy: 'zero',
+                }),
+            );
+            const proxy = parseOne(`vmess://${share}`);
+
+            expectSubset(proxy, {
+                type: 'vmess',
+                name: 'VMess Zero Security',
+                server: 'vmess-zero.example.com',
+                port: 443,
+                cipher: 'zero',
+                uuid: UUID,
+                alterId: 0,
+            });
+        });
+
         it('parses V2rayN http transport shares as h2', function () {
             const share = Base64.encode(
                 JSON.stringify({
@@ -437,7 +461,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'client-fingerprint': 'chrome',
                 alpn: ['h2'],
                 udp: true,
-                xudp: true,
+                'packet-encoding': 'xudp',
                 network: 'ws',
                 'ws-opts': {
                     path: '/ws',
@@ -465,7 +489,7 @@ describe('VMess and VLESS parser coverage', function () {
                 'client-fingerprint': 'chrome',
                 alpn: ['h2'],
                 udp: true,
-                xudp: true,
+                'packet-encoding': 'xudp',
                 network: 'ws',
                 'ws-opts': {
                     path: '/ws',
@@ -489,7 +513,7 @@ describe('VMess and VLESS parser coverage', function () {
                 uuid: UUID,
                 tls: true,
                 udp: true,
-                'packet-addr': true,
+                'packet-encoding': 'packetaddr',
                 network: 'ws',
                 'ws-opts': {
                     path: '/ws',
@@ -501,6 +525,31 @@ describe('VMess and VLESS parser coverage', function () {
                 },
             });
             expect(proxy).to.not.have.property('xudp');
+            expect(proxy).to.not.have.property('packet-addr');
+        });
+
+        it('parses websocket VLESS shares with xudp packet encoding', function () {
+            const proxy = parseOne(
+                `vless://${UUID}@vless-xudp.example.com:443?type=ws&security=tls&host=cdn.example.com&path=%2Fws&packetEncoding=xudp#VLESS%20WS%20XUDP`,
+            );
+
+            expectSubset(proxy, {
+                type: 'vless',
+                name: 'VLESS WS XUDP',
+                server: 'vless-xudp.example.com',
+                port: 443,
+                uuid: UUID,
+                tls: true,
+                udp: true,
+                'packet-encoding': 'xudp',
+                network: 'ws',
+                'ws-opts': {
+                    path: '/ws',
+                    headers: {
+                        Host: 'cdn.example.com',
+                    },
+                },
+            });
         });
 
         it('parses websocket VLESS shares with pcs as tls fingerprint', function () {
@@ -516,7 +565,7 @@ describe('VMess and VLESS parser coverage', function () {
                 uuid: UUID,
                 tls: true,
                 udp: true,
-                xudp: true,
+                'packet-encoding': 'xudp',
                 'tls-fingerprint': 'fingerprint',
                 network: 'ws',
                 'ws-opts': {
@@ -838,6 +887,7 @@ describe('VMess and VLESS parser coverage', function () {
                 server: 'vless-h2.example.com',
                 port: 443,
                 udp: true,
+                'packet-encoding': '',
                 network: 'h2',
                 _h2: true,
                 'h2-opts': {
@@ -2615,7 +2665,6 @@ describe('Platform raw-format parser coverage', function () {
                 },
             },
         ]);
-
     });
 
     describe('Loon raw inputs', function () {
@@ -2658,7 +2707,7 @@ describe('Platform raw-format parser coverage', function () {
             },
             {
                 title: 'parses vmess http tls lines',
-                input: `Loon VMess=vmess,loon-vmess.example.com,443,auto,"${UUID}",transport=http,host=cdn.example.com,path=/http,over-tls=true,tls-name=sni.example.com,skip-cert-verify=true,alterId=0`,
+                input: `Loon VMess=vmess,loon-vmess.example.com,443,auto,"${UUID}",transport=http,host=cdn.example.com,path=/http,over-tls=true,tls-name=sni.example.com,skip-cert-verify=true,tls-profile=chrome,alterId=0`,
                 expected: {
                     type: 'vmess',
                     name: 'Loon VMess',
@@ -2670,6 +2719,7 @@ describe('Platform raw-format parser coverage', function () {
                     tls: true,
                     sni: 'sni.example.com',
                     'skip-cert-verify': true,
+                    'client-fingerprint': 'chrome',
                     network: 'http',
                     'http-opts': {
                         path: ['/http'],
@@ -2677,6 +2727,32 @@ describe('Platform raw-format parser coverage', function () {
                             Host: ['cdn.example.com'],
                         },
                     },
+                },
+            },
+            {
+                title: 'canonicalizes Loon vmess chacha20 security',
+                input: `Loon VMess Chacha=vmess,loon-vmess-chacha.example.com,443,chacha20-ietf-poly1305,"${UUID}"`,
+                expected: {
+                    type: 'vmess',
+                    name: 'Loon VMess Chacha',
+                    server: 'loon-vmess-chacha.example.com',
+                    port: 443,
+                    cipher: 'chacha20-poly1305',
+                    uuid: UUID,
+                    alterId: 0,
+                },
+            },
+            {
+                title: 'defaults invalid Loon vmess security to auto',
+                input: `Loon VMess Invalid=vmess,loon-vmess-invalid.example.com,443,unknown-cipher,"${UUID}"`,
+                expected: {
+                    type: 'vmess',
+                    name: 'Loon VMess Invalid',
+                    server: 'loon-vmess-invalid.example.com',
+                    port: 443,
+                    cipher: 'auto',
+                    uuid: UUID,
+                    alterId: 0,
                 },
             },
             {
@@ -3159,6 +3235,34 @@ describe('Platform raw-format parser coverage', function () {
                             Host: 'cdn.example.com',
                         },
                     },
+                },
+            },
+            {
+                title: 'canonicalizes Surge vmess chacha20 encrypt-method',
+                input: `Surge VMess Chacha = vmess,surge-vmess-chacha.example.com,443,username=${UUID},encrypt-method=chacha20-ietf-poly1305,vmess-aead=true`,
+                expected: {
+                    type: 'vmess',
+                    name: 'Surge VMess Chacha',
+                    server: 'surge-vmess-chacha.example.com',
+                    port: 443,
+                    uuid: UUID,
+                    cipher: 'chacha20-poly1305',
+                    aead: true,
+                    alterId: 0,
+                },
+            },
+            {
+                title: 'defaults invalid Surge vmess encrypt-method to auto',
+                input: `Surge VMess Invalid = vmess,surge-vmess-invalid.example.com,443,username=${UUID},encrypt-method=none,vmess-aead=true`,
+                expected: {
+                    type: 'vmess',
+                    name: 'Surge VMess Invalid',
+                    server: 'surge-vmess-invalid.example.com',
+                    port: 443,
+                    uuid: UUID,
+                    cipher: 'auto',
+                    aead: true,
+                    alterId: 0,
                 },
             },
             {
