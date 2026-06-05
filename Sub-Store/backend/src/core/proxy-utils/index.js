@@ -4,6 +4,10 @@ import rs from '@/utils/rs';
 import YAML from '@/utils/yaml';
 import download, { downloadFile } from '@/utils/download';
 import {
+    decryptArmorIfPresent,
+    encryptArmor,
+} from '@/utils/age';
+import {
     isIPv4,
     isIPv6,
     isValidPortNumber,
@@ -36,6 +40,11 @@ import { doh } from '@/utils/dns';
 import JSON5 from 'json5';
 import { hex_md5 } from '@/vendor/md5';
 import SurgeMac_Producer from './producers/surgemac';
+
+const ageUtils = Object.freeze({
+    encrypt: encryptArmor,
+    decrypt: decryptArmorIfPresent,
+});
 
 function preprocess(raw) {
     for (const processor of PROXY_PREPROCESSORS) {
@@ -500,11 +509,11 @@ function produce(proxies, targetPlatform, type, opts = {}) {
                 proxy.sni = 'off';
             } else if (!['tuic'].includes(proxy.type)) {
                 $.error(
-                    `Target platform ${targetPlatform} does not support sni off. Proxy's fields (sni, tls-fingerprint and skip-cert-verify) will be modified.`,
+                    `Target platform ${targetPlatform} does not support sni off, proxy ${proxy.name} sni will be set to empty string instead.`,
                 );
                 proxy.sni = '';
-                proxy['skip-cert-verify'] = true;
-                delete proxy['tls-fingerprint'];
+                // proxy['skip-cert-verify'] = true;
+                // delete proxy['tls-fingerprint'];
             }
         }
 
@@ -644,6 +653,7 @@ export const ProxyUtils = {
     process: processFn,
     processResponse: processResponseFn,
     produce,
+    age: ageUtils,
     ipAddress,
     getRandomPort,
     isIPv4,
