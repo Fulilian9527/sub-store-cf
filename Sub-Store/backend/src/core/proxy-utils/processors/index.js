@@ -3,7 +3,7 @@ import scriptResourceCache from '@/utils/script-resource-cache';
 import { isIPv4, isIPv6, ipAddress, isPlainObject } from '@/utils';
 import { FULL } from '@/utils/logical';
 import { getFlag, removeFlag } from '@/utils/geo';
-import { doh } from '@/utils/dns';
+import { resolveDns } from '@/utils/dns';
 import lodash from 'lodash';
 import $ from '@/core/app';
 import { hex_md5 } from '@/vendor/md5';
@@ -426,6 +426,9 @@ function ScriptOperator(
                                               produceType: 'internal',
                                               produceOpts: {
                                                   'delete-underscore-fields': true,
+                                                  'include-unsupported-proxy':
+                                                      output?.$file
+                                                          ?.includeUnsupportedProxy,
                                               },
                                           }),
                                       }),
@@ -474,7 +477,9 @@ function ScriptOperator(
                                             platform: 'mihomo',
                                             produceType: 'internal',
                                             produceOpts: {
-                                                'delete-underscore-fields': true
+                                                'delete-underscore-fields': true,
+                                                'include-unsupported-proxy':
+                                                    $file.includeUnsupportedProxy,
                                             }
                                         }),
                                     })))
@@ -597,7 +602,7 @@ const DOMAIN_RESOLVERS = {
         const cached = resourceCache.get(id);
         if (!noCache && cached) return cached;
         const answerType = type === 'IPv6' ? 'AAAA' : 'A';
-        const res = await doh({
+        const res = await resolveDns({
             url,
             domain,
             type: answerType,
@@ -624,7 +629,7 @@ const DOMAIN_RESOLVERS = {
         const cached = resourceCache.get(id);
         if (!noCache && cached) return cached;
         const answerType = type === 'IPv6' ? 'AAAA' : 'A';
-        const res = await doh({
+        const res = await resolveDns({
             url: 'https://8.8.4.4/dns-query',
             domain,
             type: answerType,
@@ -678,7 +683,7 @@ const DOMAIN_RESOLVERS = {
         const cached = resourceCache.get(id);
         if (!noCache && cached) return cached;
         const answerType = type === 'IPv6' ? 'AAAA' : 'A';
-        const res = await doh({
+        const res = await resolveDns({
             url: 'https://1.0.0.1/dns-query',
             domain,
             type: answerType,
