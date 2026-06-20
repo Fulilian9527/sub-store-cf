@@ -25,6 +25,11 @@ import {
 import { findShareToken } from '@/restful/token';
 import { maskAgeSecretInUrl, normalizeAgePublicKeyConfig } from '@/utils/age';
 import { normalizeEditorLanguageConfig } from '@/utils/editor-language';
+import {
+    isMihomoConfigFile,
+    normalizeFileConfig,
+    normalizeFileType,
+} from '@/utils/file-type';
 
 export default function register($app) {
     if (!$.read(FILES_KEY)) $.write([], FILES_KEY);
@@ -66,9 +71,15 @@ async function getFile(req, res, next) {
         mergeSources,
         ignoreFailedRemoteFile,
         includeUnsupportedProxy,
+        type: fileType,
+        source: fileSource,
+        sourceType,
+        sourceName,
+        mode,
         proxy,
         noCache,
         produceType,
+        download,
         fakeFile: _fakeFile,
     } = req.query;
     let $options = {
@@ -118,15 +129,20 @@ async function getFile(req, res, next) {
     }
     if (
         _fakeFile &&
-        (content == null || content === '') &&
-        (url == null || url === '')
+        !canFakeFileResolveSource({
+            content,
+            fileType,
+            sourceName,
+            sourceType,
+            url,
+        })
     ) {
-        $.warn(`fakeFile 缺少 content/url: ${name}`);
+        $.warn(`fakeFile 缺少可用来源: ${name}`);
         failed(
             res,
             new RequestInvalidError(
                 'INVALID_FAKE_FILE_SOURCE',
-                'fakeFile 需要提供 content 或 url 参数',
+                'fakeFile 需要提供 content/url 或 mihomo 配置来源参数',
             ),
             400,
         );
@@ -142,6 +158,27 @@ async function getFile(req, res, next) {
             new RequestInvalidError(
                 'UNSUPPORTED_SHARE_FILE_SOURCE_OVERRIDE',
                 'share/file 不支持 url 或 content 参数',
+            ),
+            400,
+        );
+        return;
+    }
+    if (
+        isShareRoute &&
+        hasAnyQueryValue([
+            fileType,
+            fileSource,
+            sourceType,
+            sourceName,
+            mode,
+        ])
+    ) {
+        $.warn(`分享链接禁止使用文件来源配置覆盖: ${name}`);
+        failed(
+            res,
+            new RequestInvalidError(
+                'UNSUPPORTED_SHARE_FILE_RUNTIME_OVERRIDE',
+                'share/file 不支持文件来源配置覆盖参数',
             ),
             400,
         );
@@ -178,7 +215,7 @@ async function getFile(req, res, next) {
         $.info(`使用假文件, 不再通过单个文件名称 ${name} 查询`);
     }
     if (proxy) {
-        $.info(`指定远程订阅使用代理/策略 proxy: ${proxy}`);
+        $.info(`指定远程文件使用代理/策略 proxy: ${proxy}`);
     }
     if (ua) {
         $.info(`指定远程文件 User-Agent: ${ua}`);
@@ -204,11 +241,29 @@ async function getFile(req, res, next) {
     if (produceType) {
         $.info(`指定生产类型: ${produceType}`);
     }
-    if (includeUnsupportedProxy) {
+    if (fileType) {
+        $.info(`指定文件类型: ${fileType}`);
+    }
+    if (fileSource) {
+        $.info(`指定文件来源: ${fileSource}`);
+    }
+    if (sourceType) {
+        $.info(`指定 mihomo 配置来源: ${sourceType}`);
+    }
+    if (sourceName) {
+        $.info(`指定 mihomo 配置来源名称: ${sourceName}`);
+    }
+    if (mode) {
+        $.info(`指定 mihomo 配置处理方式: ${mode}`);
+    }
+    if (download) {
+        $.info('启用下载(文件名为显示名称)');
+    }
+    if (includeUnsupportedProxy != null && includeUnsupportedProxy !== '') {
         $.info(`包含官方/商店版不支持的协议: ${includeUnsupportedProxy}`);
     }
 
-    const allFiles = $.read(FILES_KEY);
+    const allFiles = $.read(FILES_KEY) || [];
     const fakeFile = {
         name: 'fakeFile',
         source: 'remote',
@@ -217,14 +272,25 @@ async function getFile(req, res, next) {
     const file = _fakeFile ? fakeFile : findByName(allFiles, name);
     if (file) {
         try {
-            const sourceFile = includeUnsupportedProxy
-                ? {
-                      ...file,
-                      includeUnsupportedProxy,
-                  }
-                : _fakeFile
-                  ? fakeFile
-                  : undefined;
+            const sourceFile = buildRuntimeFile(file, {
+                content,
+                download,
+                fileSource,
+                fileType,
+                ignoreFailedRemoteFile,
+                includeUnsupportedProxy,
+                mergeSources,
+                mode,
+                noCache,
+                sourceName,
+                sourceType,
+                produceType,
+                proxy,
+                subInfoUrl,
+                subInfoUserAgent,
+                ua,
+                url,
+            });
             const output = await produceArtifact({
                 type: 'file',
                 name,
@@ -242,14 +308,14 @@ async function getFile(req, res, next) {
             });
 
             try {
-                subInfoUrl = subInfoUrl || file.subInfoUrl;
-                if (subInfoUrl) {
+                const flowSubInfoUrl = sourceFile.subInfoUrl;
+                if (flowSubInfoUrl) {
                     // forward flow headers
                     const flowInfo = await getFlowHeaders(
-                        subInfoUrl,
-                        subInfoUserAgent || file.subInfoUserAgent,
+                        flowSubInfoUrl,
+                        sourceFile.subInfoUserAgent,
                         undefined,
-                        proxy || file.proxy,
+                        sourceFile.proxy,
                     );
                     if (flowInfo) {
                         const headers = normalizeFlowHeader(flowInfo, true);
@@ -277,11 +343,11 @@ async function getFile(req, res, next) {
                     )}`,
                 );
             }
-            if (file.download) {
+            if (sourceFile.download) {
                 res.set(
                     'Content-Disposition',
                     `attachment; filename*=UTF-8''${encodeURIComponent(
-                        file.displayName || file.name,
+                        sourceFile.displayName || sourceFile.name,
                     )}`,
                 );
             }
@@ -303,8 +369,8 @@ async function getFile(req, res, next) {
             const body = await applyResponseTransformers({
                 res,
                 body: output?.$content ?? '',
-                process: file.process,
-                source: { $file: file },
+                process: sourceFile.process,
+                source: { $file: sourceFile },
                 $options: output?.$options ?? $options,
             });
             res.send(
@@ -318,7 +384,7 @@ async function getFile(req, res, next) {
                             name,
                             findShareToken,
                         }),
-                        file,
+                        sourceFile,
                     ],
                 }),
             );
@@ -385,14 +451,14 @@ function getWholeFile(req, res) {
 function updateFile(req, res) {
     let { name } = req.params;
     let file = req.body;
-    const allFiles = $.read(FILES_KEY);
+    const allFiles = $.read(FILES_KEY) || [];
     const oldFile = findByName(allFiles, name);
     if (oldFile) {
         if (!file.name) file.name = oldFile.name;
-        const newFile = {
+        const newFile = normalizeFileConfig({
             ...oldFile,
             ...file,
-        };
+        });
         normalizeAgePublicKeyConfig(newFile);
         normalizeEditorLanguageConfig(newFile);
         $.info(`正在更新文件：${name}...`);
@@ -441,7 +507,7 @@ function deleteFile(req, res) {
 }
 
 function getAllFiles(req, res) {
-    const allFiles = $.read(FILES_KEY);
+    const allFiles = $.read(FILES_KEY) || [];
     success(
         res, // eslint-disable-next-line no-unused-vars
         allFiles.map(({ content, ...rest }) => rest),
@@ -449,13 +515,13 @@ function getAllFiles(req, res) {
 }
 
 function getAllWholeFiles(req, res) {
-    const allFiles = $.read(FILES_KEY);
+    const allFiles = $.read(FILES_KEY) || [];
     success(res, allFiles);
 }
 
 function replaceFile(req, res) {
     try {
-        const allFiles = req.body;
+        const allFiles = req.body.map(normalizeFileConfig);
         allFiles.forEach((file) => {
             normalizeAgePublicKeyConfig(file);
             normalizeEditorLanguageConfig(file);
@@ -468,9 +534,9 @@ function replaceFile(req, res) {
 }
 
 function createFileItem(rawFile) {
-    const file = {
+    const file = normalizeFileConfig({
         ...rawFile,
-    };
+    });
     normalizeAgePublicKeyConfig(file);
     normalizeEditorLanguageConfig(file);
     file.name = `${file.name ?? Date.now()}`;
@@ -490,7 +556,7 @@ function createFileItem(rawFile) {
 }
 
 function deleteFileItem(name) {
-    const allFiles = $.read(FILES_KEY);
+    const allFiles = $.read(FILES_KEY) || [];
     const file = findByName(allFiles, name);
     if (!file) {
         throw new ResourceNotFoundError(
@@ -514,6 +580,108 @@ function shouldArchiveDeletion(mode) {
         'INVALID_DELETE_MODE',
         `Unsupported delete mode: ${mode}`,
     );
+}
+
+function buildRuntimeFile(
+    file,
+    {
+        content,
+        download,
+        fileSource,
+        fileType,
+        ignoreFailedRemoteFile,
+        includeUnsupportedProxy,
+        mergeSources,
+        mode,
+        noCache,
+        produceType,
+        proxy,
+        sourceName,
+        sourceType,
+        subInfoUrl,
+        subInfoUserAgent,
+        ua,
+        url,
+    } = {},
+) {
+    const runtimeFile = { ...file };
+    assignQueryOverride(runtimeFile, 'content', content);
+    assignQueryOverride(runtimeFile, 'download', download);
+    assignQueryOverride(
+        runtimeFile,
+        'ignoreFailedRemoteFile',
+        ignoreFailedRemoteFile,
+    );
+    assignQueryOverride(runtimeFile, 'mergeSources', mergeSources);
+    assignQueryOverride(runtimeFile, 'noCache', noCache);
+    assignQueryOverride(runtimeFile, 'produceType', produceType);
+    assignQueryOverride(runtimeFile, 'proxy', proxy);
+    assignQueryOverride(runtimeFile, 'subInfoUrl', subInfoUrl);
+    assignQueryOverride(runtimeFile, 'subInfoUserAgent', subInfoUserAgent);
+    assignQueryOverride(runtimeFile, 'type', fileType);
+    runtimeFile.type = normalizeFileType(runtimeFile.type);
+    assignQueryOverride(runtimeFile, 'ua', ua);
+    assignQueryOverride(runtimeFile, 'url', url);
+    assignQueryOverride(runtimeFile, 'source', fileSource);
+
+    const isMihomoConfig = isMihomoConfigFile(runtimeFile);
+    if (isMihomoConfig) {
+        assignQueryOverride(runtimeFile, 'sourceType', sourceType);
+        assignQueryOverride(runtimeFile, 'sourceName', sourceName);
+        assignQueryOverride(runtimeFile, 'mode', mode);
+        if (!runtimeFile.sourceType) {
+            if (hasQueryValue(url)) {
+                runtimeFile.sourceType = 'remote';
+            } else if (hasQueryValue(content)) {
+                runtimeFile.sourceType = 'local';
+            }
+        }
+    }
+
+    assignQueryOverride(
+        runtimeFile,
+        'includeUnsupportedProxy',
+        includeUnsupportedProxy,
+    );
+
+    return runtimeFile;
+}
+
+function canFakeFileResolveSource({
+    content,
+    fileType,
+    sourceName,
+    sourceType,
+    url,
+}) {
+    if (hasAnyQueryValue([content, url])) return true;
+
+    if (!isMihomoConfigFile(getLastQueryValue(fileType))) return false;
+
+    const runtimeSourceType = getLastQueryValue(sourceType);
+    if (runtimeSourceType === 'none') return true;
+    return (
+        ['subscription', 'collection'].includes(runtimeSourceType) &&
+        hasQueryValue(sourceName)
+    );
+}
+
+function assignQueryOverride(target, key, value) {
+    if (!hasQueryValue(value)) return;
+    target[key] = getLastQueryValue(value);
+}
+
+function getLastQueryValue(value) {
+    return Array.isArray(value) ? value[value.length - 1] : value;
+}
+
+function hasQueryValue(value) {
+    const normalized = getLastQueryValue(value);
+    return normalized != null && normalized !== '';
+}
+
+function hasAnyQueryValue(values) {
+    return values.some(hasQueryValue);
 }
 
 export { createFileItem, deleteFileItem };

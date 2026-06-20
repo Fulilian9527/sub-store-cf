@@ -9,6 +9,7 @@ import $ from '@/core/app';
 import { hex_md5 } from '@/vendor/md5';
 import { ProxyUtils } from '@/core/proxy-utils';
 import { produceArtifact } from '@/restful/sync';
+import { isMihomoConfigFile } from '@/utils/file-type';
 import { SETTINGS_KEY } from '@/constants';
 import YAML from '@/utils/yaml';
 
@@ -397,7 +398,7 @@ function ScriptOperator(
         name: 'Script Operator',
         func: async (proxies) => {
             let output = proxies;
-            if (output?.$file?.type === 'mihomoProfile') {
+            if (isMihomoConfigFile(output?.$file)) {
                 try {
                     let patch = YAML.safeLoad(script);
                     let config;
@@ -412,28 +413,7 @@ function ScriptOperator(
                     if (typeof patch !== 'object')
                         throw new Error('patch is not an object');
                     output.$content = ProxyUtils.yaml.safeDump(
-                        deepMerge(
-                            config ||
-                                (output?.$file?.sourceType === 'none'
-                                    ? {}
-                                    : {
-                                          proxies: await produceArtifact({
-                                              type:
-                                                  output?.$file?.sourceType ||
-                                                  'collection',
-                                              name: output?.$file?.sourceName,
-                                              platform: 'mihomo',
-                                              produceType: 'internal',
-                                              produceOpts: {
-                                                  'delete-underscore-fields': true,
-                                                  'include-unsupported-proxy':
-                                                      output?.$file
-                                                          ?.includeUnsupportedProxy,
-                                              },
-                                          }),
-                                      }),
-                            patch,
-                        ),
+                        deepMerge(config || {}, patch),
                     );
                     return output;
                 } catch (e) {
@@ -459,7 +439,7 @@ function ScriptOperator(
                     `async function operator(input = [], targetPlatform, context) {
                         if (input && (input.$files || input.$content)) {
                             let { $content, $files, $options, $file } = input
-                            if($file.type === 'mihomoProfile') {
+                            if (['mihomoConfig', 'mihomoProfile'].includes($file?.type)) {
                                 ${script}
                                 if(typeof main === 'function') {
                                     let config;
@@ -470,19 +450,7 @@ function ScriptOperator(
                                             console.log(e.message ?? e);
                                         }
                                     }
-                                    $content = ProxyUtils.yaml.safeDump(await main(config || ($file.sourceType === 'none' ? {} : {
-                                        proxies: await produceArtifact({
-                                            type: $file.sourceType || 'collection',
-                                            name: $file.sourceName,
-                                            platform: 'mihomo',
-                                            produceType: 'internal',
-                                            produceOpts: {
-                                                'delete-underscore-fields': true,
-                                                'include-unsupported-proxy':
-                                                    $file.includeUnsupportedProxy,
-                                            }
-                                        }),
-                                    })))
+                                    $content = ProxyUtils.yaml.safeDump(await main(config || {}))
                                 }
                             } else {
                                 ${script}
@@ -505,6 +473,66 @@ function ScriptOperator(
             })();
             return output;
         },
+    };
+}
+
+const ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR =
+    'Add Proxies From Subscription Operator';
+
+function normalizeMihomoConfig(content) {
+    if (!content) return {};
+
+    const config = YAML.safeLoad(content);
+    return isPlainObject(config) ? config : {};
+}
+
+function getMihomoProfileProxies(config) {
+    return Array.isArray(config?.proxies) ? config.proxies : [];
+}
+
+function AddProxiesFromSubscriptionOperator({
+    sourceType = 'subscription',
+    sourceName,
+    includeUnsupportedProxy,
+    position = 'replace',
+} = {}) {
+    const apply = async (input) => {
+        if (!isMihomoConfigFile(input?.$file)) return input;
+
+        const config = normalizeMihomoConfig(input.$content);
+        const currentProxies = getMihomoProfileProxies(config);
+        const proxies = await produceArtifact({
+            type: sourceType,
+            name: sourceName,
+            platform: 'mihomo',
+            produceType: 'internal',
+            produceOpts: {
+                'delete-underscore-fields': true,
+                'include-unsupported-proxy': includeUnsupportedProxy,
+            },
+        });
+
+        switch (position) {
+            case 'front':
+                config.proxies = [...proxies, ...currentProxies];
+                break;
+            case 'back':
+                config.proxies = [...currentProxies, ...proxies];
+                break;
+            case 'replace':
+            default:
+                config.proxies = proxies;
+                break;
+        }
+
+        input.$content = ProxyUtils.yaml.safeDump(config);
+        return input;
+    };
+
+    return {
+        name: ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR,
+        func: apply,
+        nodeFunc: apply,
     };
 }
 
@@ -1169,6 +1197,8 @@ export default {
     'Regex Rename Operator': RegexRenameOperator,
     'Regex Delete Operator': RegexDeleteOperator,
     'Script Operator': ScriptOperator,
+    [ADD_PROXIES_FROM_SUBSCRIPTION_OPERATOR]:
+        AddProxiesFromSubscriptionOperator,
     [RESPONSE_TRANSFORMER]: ResponseTransformer,
     'Handle Duplicate Operator': HandleDuplicateOperator,
     'Resolve Domain Operator': ResolveDomainOperator,
