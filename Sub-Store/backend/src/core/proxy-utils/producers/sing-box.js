@@ -530,14 +530,14 @@ const getShadowTLSPluginOpts = (proxy = {}) => {
         return proxy['plugin-opts'];
     }
     if (
-        proxy['shadow-tls-password'] != null ||
-        proxy['shadow-tls-sni'] != null ||
-        proxy['shadow-tls-version'] != null
+        proxy.type === 'snell' &&
+        proxy['obfs-opts']?.mode === 'shadow-tls'
     ) {
         return {
-            host: proxy['shadow-tls-sni'],
-            password: proxy['shadow-tls-password'],
-            version: proxy['shadow-tls-version'],
+            host: proxy['obfs-opts'].host,
+            password: proxy['obfs-opts'].password,
+            version: proxy['obfs-opts'].version,
+            alpn: proxy['obfs-opts'].alpn,
         };
     }
     return undefined;
@@ -578,7 +578,7 @@ const shadowTLSOutboundParser = (proxy = {}, pluginOpts) => {
     }
     if (stPart.server_port < 0 || stPart.server_port > 65535)
         throw '端口值非法';
-    const alpn = normalizeALPN(pluginOpts.alpn);
+    const alpn = normalizeALPN(pluginOpts.alpn) ?? normalizeALPN(proxy.alpn);
     if (alpn) stPart.tls.alpn = alpn;
     if (proxy['fast-open'] === true) stPart.udp_fragment = true;
     tfoParser(proxy, stPart);
@@ -734,9 +734,15 @@ const snellParser = (proxy = {}) => {
     if (parsedProxy.server_port < 0 || parsedProxy.server_port > 65535)
         throw 'invalid port';
     if (version != null) parsedProxy.version = version;
-    if (proxy['obfs-opts']?.mode)
+    if (
+        proxy['obfs-opts']?.mode &&
+        proxy['obfs-opts'].mode !== 'shadow-tls'
+    )
         parsedProxy.obfs_mode = proxy['obfs-opts'].mode;
-    if (proxy['obfs-opts']?.host)
+    if (
+        proxy['obfs-opts']?.host &&
+        proxy['obfs-opts']?.mode !== 'shadow-tls'
+    )
         parsedProxy.obfs_host = proxy['obfs-opts'].host;
     if (proxy.reuse && (version == null || version >= 4))
         parsedProxy.reuse = true;
@@ -1274,10 +1280,41 @@ export default function singbox_Producer() {
     const type = 'ALL';
     const produce = (proxies, type, opts = {}) => {
         const list = [];
+        const originalSnellShadowTLS = new Map(
+            proxies
+                .filter(
+                    (proxy) =>
+                        proxy?.type === 'snell' &&
+                        proxy?.plugin === 'shadow-tls' &&
+                        proxy?.['plugin-opts'],
+                )
+                .map((proxy) => [
+                    proxy,
+                    {
+                        plugin: proxy.plugin,
+                        'plugin-opts': proxy['plugin-opts']
+                            ? JSON.parse(JSON.stringify(proxy['plugin-opts']))
+                            : undefined,
+                        'obfs-opts': proxy['obfs-opts']
+                            ? JSON.parse(JSON.stringify(proxy['obfs-opts']))
+                            : undefined,
+                    },
+                ]),
+        );
         ClashMeta_Producer()
             .produce(proxies, 'internal', { 'include-unsupported-proxy': true })
             .map((proxy) => {
                 try {
+                    const originalShadowTLS = originalSnellShadowTLS.get(proxy);
+                    if (originalShadowTLS) {
+                        proxy.plugin = originalShadowTLS.plugin;
+                        proxy['plugin-opts'] = originalShadowTLS['plugin-opts'];
+                        if (originalShadowTLS['obfs-opts']) {
+                            proxy['obfs-opts'] = originalShadowTLS['obfs-opts'];
+                        } else {
+                            delete proxy['obfs-opts'];
+                        }
+                    }
                     if (['xhttp'].includes(proxy.network))
                         throw new Error(
                             `Platform sing-box does not support network: ${proxy.network}`,

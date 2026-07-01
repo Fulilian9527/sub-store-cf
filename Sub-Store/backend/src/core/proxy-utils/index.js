@@ -768,6 +768,26 @@ function lastParse(proxy) {
             .replace(/^\[/, '')
             .replace(/\]$/, '');
     }
+    if (
+        proxy.type === 'snell' &&
+        proxy['obfs-opts']?.mode === 'shadow-tls' &&
+        !proxy.plugin
+    ) {
+        proxy.plugin = 'shadow-tls';
+        proxy['plugin-opts'] = {
+            host: proxy['obfs-opts'].host,
+            password: proxy['obfs-opts'].password,
+            version: proxy['obfs-opts'].version,
+            alpn: proxy['obfs-opts'].alpn,
+        };
+        delete proxy['obfs-opts'];
+    }
+    if (proxy.plugin === 'shadow-tls' && proxy['plugin-opts']) {
+        if (proxy.alpn && !proxy['plugin-opts'].alpn) {
+            proxy['plugin-opts'].alpn = proxy.alpn;
+        }
+        delete proxy.alpn;
+    }
     if (proxy.network === 'ws') {
         if (!proxy['ws-opts'] && (proxy['ws-path'] || proxy['ws-headers'])) {
             proxy['ws-opts'] = {};
@@ -1026,20 +1046,6 @@ function lastParse(proxy) {
     }
     if (!proxy['tls-fingerprint'] && caStr) {
         proxy['tls-fingerprint'] = rs.generateFingerprint(caStr);
-    }
-    if (
-        ['ss'].includes(proxy.type) &&
-        isPresent(proxy, 'shadow-tls-password')
-    ) {
-        proxy.plugin = 'shadow-tls';
-        proxy['plugin-opts'] = {
-            host: proxy['shadow-tls-sni'],
-            password: proxy['shadow-tls-password'],
-            version: proxy['shadow-tls-version'],
-        };
-        delete proxy['shadow-tls-sni'];
-        delete proxy['shadow-tls-password'];
-        delete proxy['shadow-tls-version'];
     }
     if (['tuic'].includes(proxy.type)) {
         proxy.alpn = Array.isArray(proxy.alpn)

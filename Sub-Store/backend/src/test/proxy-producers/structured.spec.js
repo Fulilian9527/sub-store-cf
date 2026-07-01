@@ -464,7 +464,7 @@ describe('Proxy structured producers', function () {
         expect(output.outbounds[0]).to.not.have.property('obfs_uri');
     });
 
-    it('exports Snell shadow-tls field form to sing-box chained outbounds', function () {
+    it('exports Snell shadow-tls plugin form to sing-box chained outbounds', function () {
         const output = loadProducedJson(
             'sing-box',
             {
@@ -481,9 +481,16 @@ describe('Proxy structured producers', function () {
                 'dialer-proxy': 'proxy-out',
                 'ip-version': 'v6-only',
                 _dns_server: 'dns-out',
-                'shadow-tls-password': 'shadow-pass',
-                'shadow-tls-sni': 'mask.example.com',
-                'shadow-tls-version': 3,
+                plugin: 'shadow-tls',
+                'plugin-opts': {
+                    host: 'mask.example.com',
+                    password: 'shadow-pass',
+                    version: 3,
+                },
+                'obfs-opts': {
+                    mode: 'http',
+                    host: 'obfs.example.com',
+                },
             },
             { 'include-unsupported-proxy': true },
         );
@@ -496,6 +503,8 @@ describe('Proxy structured producers', function () {
             version: 4,
             reuse: true,
             network: 'tcp',
+            obfs_mode: 'http',
+            obfs_host: 'obfs.example.com',
             detour: 'sing-box Snell ShadowTLS_shadowtls',
         });
         expect(output.outbounds[0]).to.not.have.property('server');
@@ -555,7 +564,114 @@ describe('Proxy structured producers', function () {
         });
     });
 
-    it('exports Mihomo-style Snell shadow-tls plugin objects to sing-box chained outbounds', function () {
+    it('exports parsed Surge Snell shadow-tls ALPN lines to sing-box chained outbounds', function () {
+        const [proxy] = ProxyUtils.parse(
+            'Surge Snell ShadowTLS ALPN = snell,surge-snell.example.com,443,psk=secret,version=5,alpn="h2,http/1.1",shadow-tls-password=shadow-pass,shadow-tls-sni=mask.example.com,shadow-tls-version=3',
+        );
+
+        const output = loadProducedJson('sing-box', proxy, {
+            'include-unsupported-proxy': true,
+        });
+
+        expectSubset(output.outbounds[1], {
+            tag: 'Surge Snell ShadowTLS ALPN_shadowtls',
+            type: 'shadowtls',
+            tls: {
+                server_name: 'mask.example.com',
+                alpn: ['h2', 'http/1.1'],
+            },
+        });
+    });
+
+    it('emits Mihomo Snell shadow-tls as obfs-opts mode shadow-tls', function () {
+        const proxy = {
+            type: 'snell',
+            name: 'Mihomo Snell ShadowTLS',
+            server: 'mihomo-snell.example.com',
+            port: 443,
+            psk: 'secret',
+            version: 4,
+            udp: false,
+            plugin: 'shadow-tls',
+            'plugin-opts': {
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+                alpn: ['h2', 'http/1.1'],
+            },
+        };
+
+        const internal = produceInternal('Mihomo', proxy);
+        const external = loadProducedYaml('Mihomo', proxy);
+
+        expectSubset(internal[0], {
+            type: 'snell',
+            name: 'Mihomo Snell ShadowTLS',
+            server: 'mihomo-snell.example.com',
+            port: 443,
+            psk: 'secret',
+            version: 4,
+            'obfs-opts': {
+                mode: 'shadow-tls',
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+                alpn: ['h2', 'http/1.1'],
+            },
+        });
+        expect(internal[0]).to.not.have.property('plugin');
+        expect(internal[0]).to.not.have.property('plugin-opts');
+        expectSubset(external.proxies[0], {
+            type: 'snell',
+            name: 'Mihomo Snell ShadowTLS',
+            'obfs-opts': {
+                mode: 'shadow-tls',
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+                alpn: ['h2', 'http/1.1'],
+            },
+        });
+        expect(external.proxies[0]).to.not.have.property('plugin');
+        expect(external.proxies[0]).to.not.have.property('plugin-opts');
+    });
+
+    it('filters Mihomo Snell shadow-tls when obfs also exists', function () {
+        const proxy = {
+            type: 'snell',
+            name: 'Mihomo Snell ShadowTLS With Obfs',
+            server: 'mihomo-snell.example.com',
+            port: 443,
+            psk: 'secret',
+            version: 4,
+            plugin: 'shadow-tls',
+            'plugin-opts': {
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+            },
+            'obfs-opts': {
+                mode: 'http',
+                host: 'obfs.example.com',
+            },
+        };
+
+        const { result: internal, errors } = captureErrors(() =>
+            produceInternal('Mihomo', proxy),
+        );
+        const { result: external, errors: externalErrors } = captureErrors(() =>
+            loadProducedYaml('Mihomo', proxy),
+        );
+
+        expect(errors).to.deep.equal([
+            'Platform Mihomo does not support Snell shadow-tls with obfs for proxy Mihomo Snell ShadowTLS With Obfs. Proxy has been filtered.',
+        ]);
+        expect(externalErrors).to.deep.equal(errors);
+        expect(internal).to.have.length(0);
+        expect(external).to.deep.equal({ proxies: null });
+    });
+
+    it('exports Mihomo-style Snell obfs shadow-tls objects to sing-box chained outbounds', function () {
         const [proxy] = ProxyUtils.parse(`proxies:
   - name: Mihomo Snell ShadowTLS
     type: snell
@@ -564,8 +680,8 @@ describe('Proxy structured producers', function () {
     psk: secret
     version: 4
     udp: false
-    plugin: shadow-tls
-    plugin-opts:
+    obfs-opts:
+      mode: shadow-tls
       host: mask.example.com
       password: shadow-pass
       version: 2
@@ -714,9 +830,12 @@ describe('Proxy structured producers', function () {
             port: 8388,
             cipher: 'aes-128-gcm',
             password: 'secret',
-            'shadow-tls-password': 'shadow-pass',
-            'shadow-tls-sni': 'mask.example.com',
-            'shadow-tls-version': version,
+            plugin: 'shadow-tls',
+            'plugin-opts': {
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version,
+            },
         });
         const proxies = [
             buildShadowTlsProxy('ShadowTLS 1', 1),
@@ -1731,7 +1850,7 @@ describe('Proxy structured producers', function () {
         });
     });
 
-    it('promotes shadow-tls fields for Shadowrocket', function () {
+    it('keeps shadow-tls plugin objects for Shadowrocket', function () {
         const proxy = {
             type: 'ss',
             name: 'ShadowTLS SS',
@@ -1739,9 +1858,12 @@ describe('Proxy structured producers', function () {
             port: 8388,
             cipher: 'aes-128-gcm',
             password: 'secret',
-            'shadow-tls-password': 'shadow-pass',
-            'shadow-tls-sni': 'mask.example.com',
-            'shadow-tls-version': 3,
+            plugin: 'shadow-tls',
+            'plugin-opts': {
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 3,
+            },
             'skip-cert-verify': true,
         };
 
@@ -1762,6 +1884,86 @@ describe('Proxy structured producers', function () {
             type: 'ss',
             plugin: 'shadow-tls',
         });
+    });
+
+    it('emits Snell shadow-tls as obfs-opts mode shadow-tls for Shadowrocket', function () {
+        const proxy = {
+            type: 'snell',
+            name: 'Shadowrocket Snell ShadowTLS',
+            server: 'snell.example.com',
+            port: 44046,
+            psk: 'secret',
+            version: 4,
+            plugin: 'shadow-tls',
+            'plugin-opts': {
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+                alpn: ['h2', 'http/1.1'],
+            },
+        };
+
+        const internal = produceInternal('Shadowrocket', proxy)[0];
+        const external = loadProducedYaml('Shadowrocket', proxy);
+
+        expectSubset(internal, {
+            type: 'snell',
+            name: 'Shadowrocket Snell ShadowTLS',
+            'obfs-opts': {
+                mode: 'shadow-tls',
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+                alpn: ['h2', 'http/1.1'],
+            },
+        });
+        expect(internal).to.not.have.property('plugin');
+        expect(internal).to.not.have.property('plugin-opts');
+        expectSubset(external.proxies[0], {
+            type: 'snell',
+            'obfs-opts': {
+                mode: 'shadow-tls',
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+                alpn: ['h2', 'http/1.1'],
+            },
+        });
+    });
+
+    it('filters Shadowrocket Snell shadow-tls when obfs also exists', function () {
+        const proxy = {
+            type: 'snell',
+            name: 'Shadowrocket Snell ShadowTLS With Obfs',
+            server: 'snell.example.com',
+            port: 44046,
+            psk: 'secret',
+            version: 4,
+            plugin: 'shadow-tls',
+            'plugin-opts': {
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 2,
+            },
+            'obfs-opts': {
+                mode: 'http',
+                host: 'obfs.example.com',
+            },
+        };
+
+        const { result: internal, errors } = captureErrors(() =>
+            produceInternal('Shadowrocket', proxy),
+        );
+        const { result: external, errors: externalErrors } = captureErrors(() =>
+            loadProducedYaml('Shadowrocket', proxy),
+        );
+
+        expect(errors).to.deep.equal([
+            'Platform Shadowrocket does not support Snell shadow-tls with obfs for proxy Shadowrocket Snell ShadowTLS With Obfs. Proxy has been filtered.',
+        ]);
+        expect(externalErrors).to.deep.equal(errors);
+        expect(internal).to.have.length(0);
+        expect(external).to.deep.equal({ proxies: null });
     });
 
     it('maps canonical shadowsocks tls fields into Shadowrocket structured output', function () {
@@ -1862,7 +2064,7 @@ describe('Proxy structured producers', function () {
         // expect(external.proxies[0]).to.not.have.property('sni');
     });
 
-    it('maps shadowsocks shadow-tls fields into Egern nested structures', function () {
+    it('maps shadowsocks shadow-tls plugin objects into Egern nested structures', function () {
         const proxy = {
             type: 'ss',
             name: 'ShadowTLS SS',
@@ -1870,9 +2072,12 @@ describe('Proxy structured producers', function () {
             port: 8388,
             cipher: 'aes-128-gcm',
             password: 'secret',
-            'shadow-tls-password': 'shadow-pass',
-            'shadow-tls-sni': 'mask.example.com',
-            'shadow-tls-version': 3,
+            plugin: 'shadow-tls',
+            'plugin-opts': {
+                host: 'mask.example.com',
+                password: 'shadow-pass',
+                version: 3,
+            },
         };
 
         const internal = produceInternal('Egern', proxy)[0];
@@ -1902,7 +2107,7 @@ describe('Proxy structured producers', function () {
         const proxies = [
             {
                 type: 'ssh',
-                name: 'Egern SSH Direct Fields',
+                name: 'Egern SSH Plugin',
                 server: 'ssh.example.com',
                 port: 443,
                 username: 'user',
@@ -1911,9 +2116,12 @@ describe('Proxy structured producers', function () {
                 'host-key': ['ssh-ed25519 AAAATEST'],
                 tfo: true,
                 'block-quic': 'off',
-                'shadow-tls-password': 'shadow-pass',
-                'shadow-tls-sni': 'mask.example.com',
-                'shadow-tls-version': 3,
+                plugin: 'shadow-tls',
+                'plugin-opts': {
+                    host: 'mask.example.com',
+                    password: 'shadow-pass',
+                    version: 3,
+                },
             },
             {
                 type: 'ss',
@@ -1931,8 +2139,8 @@ describe('Proxy structured producers', function () {
         const external = loadProducedYaml('Egern', proxies);
 
         for (const output of [internal, external.proxies]) {
-            expectSubset(getProxy(output, 'ssh', 'Egern SSH Direct Fields'), {
-                name: 'Egern SSH Direct Fields',
+            expectSubset(getProxy(output, 'ssh', 'Egern SSH Plugin'), {
+                name: 'Egern SSH Plugin',
                 server: 'ssh.example.com',
                 port: 443,
                 username: 'user',
@@ -1961,9 +2169,12 @@ describe('Proxy structured producers', function () {
                 server: 'ssh.example.com',
                 port: 443,
                 username: 'user',
-                'shadow-tls-password': 'shadow-pass',
-                'shadow-tls-sni': 'mask.example.com',
-                'shadow-tls-version': 2,
+                plugin: 'shadow-tls',
+                'plugin-opts': {
+                    host: 'mask.example.com',
+                    password: 'shadow-pass',
+                    version: 2,
+                },
             },
             {
                 type: 'ss',
@@ -2147,14 +2358,17 @@ describe('Proxy structured producers', function () {
         const proxies = [
             {
                 type: 'snell',
-                name: 'Egern Snell ShadowTLS Fields',
+                name: 'Egern Snell ShadowTLS Plugin A',
                 server: 'snell-shadowtls.example.com',
                 port: 44046,
                 psk: 'secret',
                 version: 5,
-                'shadow-tls-password': 'shadow-pass',
-                'shadow-tls-sni': 'mask.example.com',
-                'shadow-tls-version': 3,
+                plugin: 'shadow-tls',
+                'plugin-opts': {
+                    host: 'mask.example.com',
+                    password: 'shadow-pass',
+                    version: 3,
+                },
             },
             {
                 type: 'snell',
@@ -2188,7 +2402,7 @@ describe('Proxy structured producers', function () {
         );
 
         expect(errors).to.deep.equal([
-            'Platform Egern does not support Snell shadow-tls proxy Egern Snell ShadowTLS Fields. Proxy has been filtered.',
+            'Platform Egern does not support Snell shadow-tls proxy Egern Snell ShadowTLS Plugin A. Proxy has been filtered.',
             'Platform Egern does not support Snell shadow-tls proxy Egern Snell ShadowTLS Plugin. Proxy has been filtered.',
         ]);
         expect(externalErrors).to.deep.equal(errors);
