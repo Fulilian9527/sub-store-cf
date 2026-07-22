@@ -484,7 +484,9 @@ export default async function download(
                     );
                 }
             }
-            throw new Error(`无法下载 URL ${safeUrl}: ${e.message ?? e}`);
+            const message = `无法下载 URL ${safeUrl}: ${e.message ?? e}`;
+            $.error(message);
+            throw new Error(message);
         }
     }
 
@@ -521,7 +523,7 @@ export async function downloadFile(url, file) {
         dispatcher: new Agent().compose(
             interceptors.redirect({
                 maxRedirections: 3,
-                throwOnRedirect: true,
+                throwOnMaxRedirect: true,
             }),
         ),
     });

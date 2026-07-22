@@ -467,7 +467,7 @@ export function HTTP(defaultOptions = { baseURL: '' }) {
                 opts: options.opts,
             });
         } else if (isLoon || isSurge || isNode) {
-            worker = new Promise(async (resolve, reject) => {
+            const run = async (resolve, reject) => {
                 const body = options.body;
                 const opts = JSON.parse(JSON.stringify(options));
                 opts.body = body;
@@ -570,12 +570,14 @@ export function HTTP(defaultOptions = { baseURL: '' }) {
                                     ...agentOpts,
                                     uri: opts.proxy,
                                     requestTls: tlsOptions,
+                                    proxyTunnel: opts.proxyTunnel,
                                 });
                             }
                         } else {
                             dispatcher = new EnvHttpProxyAgent({
                                 ...agentOpts,
                                 requestTls: tlsOptions,
+                                proxyTunnel: opts.proxyTunnel,
                             });
                         }
                         const response = await request(opts.url, {
@@ -584,7 +586,7 @@ export function HTTP(defaultOptions = { baseURL: '' }) {
                             dispatcher: dispatcher.compose(
                                 interceptors.redirect({
                                     maxRedirections: 3,
-                                    throwOnMaxRedirects: true,
+                                    throwOnMaxRedirect: true,
                                 }),
                             ),
                         });
@@ -625,6 +627,9 @@ export function HTTP(defaultOptions = { baseURL: '' }) {
                         },
                     );
                 }
+            };
+            worker = new Promise((resolve, reject) => {
+                run(resolve, reject).catch(reject);
             });
         } else if (isGUIforCores) {
             worker = new Promise(async (resolve, reject) => {
@@ -667,16 +672,14 @@ export function HTTP(defaultOptions = { baseURL: '' }) {
               })
             : null;
 
-        return (
-            timer
-                ? Promise.race([timer, worker]).then((res) => {
-                      if (typeof clearTimeout !== 'undefined') {
-                          clearTimeout(timeoutid);
-                      }
-                      return res;
-                  })
-                : worker
-        ).then((resp) => events.onResponse(resp));
+        const request = timer ? Promise.race([timer, worker]) : worker;
+        return request
+            .finally(() => {
+                if (timer && typeof clearTimeout !== 'undefined') {
+                    clearTimeout(timeoutid);
+                }
+            })
+            .then((resp) => events.onResponse(resp));
     }
 
     const http = {
