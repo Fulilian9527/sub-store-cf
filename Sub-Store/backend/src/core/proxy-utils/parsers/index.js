@@ -401,7 +401,11 @@ function URI_SS() {
             }
         }
 
-        proxy.udp = !!params['udp'];
+        proxy.udp = ![false, 0, '0', 'false', 'off'].includes(
+            typeof params['udp'] === 'string'
+                ? params['udp'].toLowerCase()
+                : params['udp'],
+        );
 
         const serverAndPort = serverAndPortArray[1];
         const portIdx = serverAndPort.lastIndexOf(':');
@@ -620,6 +624,9 @@ function URI_VMess() {
         return /^vmess:\/\//.test(line);
     };
     const parse = (line) => {
+        if (/^vmess:\/\/[^/?#]+@/.test(line)) {
+            return URI_VLESS().parse(line, 'vmess');
+        }
         let { content: lineWithoutFragment, fragment: fragmentName } =
             splitURIFragment(line.split('vmess://')[1]);
         let content = Base64.decode(lineWithoutFragment.replace(/\?.*?$/, ''));
@@ -909,7 +916,7 @@ function URI_VLESS() {
     const test = (line) => {
         return /^vless:\/\//.test(line);
     };
-    const parse = (line) => {
+    const parse = (line, protocol = 'vless') => {
         const mapXmuxToReuseSettings = (xmux) => {
             if (!isPlainObject(xmux)) {
                 return undefined;
@@ -1809,7 +1816,7 @@ function URI_VLESS() {
                 : undefined;
         };
 
-        line = line.split('vless://')[1];
+        line = line.split(`${protocol}://`)[1];
         let isShadowrocket;
         let parsed = /^(.*?)@(.*?):(\d+)\/?(\?(.*?))?(?:#(.*?))?$/.exec(line);
         if (!parsed) {
@@ -1832,7 +1839,7 @@ function URI_VLESS() {
         }
 
         const proxy = {
-            type: 'vless',
+            type: protocol,
             name,
             server,
             port,
@@ -1842,10 +1849,8 @@ function URI_VLESS() {
         const params = {};
         for (const addon of addons.split('&')) {
             if (addon) {
-                const [key, valueRaw] = addon.split('=');
-                let value = valueRaw;
-                value = decodeURIComponent(valueRaw);
-                params[key] = value;
+                const [key, ...value] = addon.split('=');
+                params[key] = decodeURIComponent(value.join('='));
             }
         }
 
@@ -1853,7 +1858,7 @@ function URI_VLESS() {
             name ??
             params.remarks ??
             params.remark ??
-            `VLESS ${server}:${port}`;
+            `${protocol === 'vmess' ? 'VMess' : 'VLESS'} ${server}:${port}`;
 
         proxy.tls = params.security && params.security !== 'none';
         if (params.pbk) {
@@ -1908,6 +1913,10 @@ function URI_VLESS() {
             const opts = {};
             if (params.pbk) {
                 opts['public-key'] = params.pbk;
+                const mlkem = params['support-x25519mlkem768'];
+                if (['1', 't', 'T', 'true', 'TRUE', 'True'].includes(mlkem)) {
+                    opts['support-x25519mlkem768'] = true;
+                }
             }
             if (params.sid) {
                 opts['short-id'] = params.sid;
@@ -2084,11 +2093,25 @@ function URI_VLESS() {
                 proxy._mode = params.mode;
             }
         }
-        if (params.encryption) {
+        if (protocol === 'vmess') {
+            proxy.cipher = normalizeVmessSecurity(params.encryption);
+            proxy.alterId = 0;
+            delete proxy.flow;
+        } else if (params.encryption) {
             proxy.encryption = params.encryption;
         }
         if (params.pqv) {
             proxy._pqv = params.pqv;
+        }
+        if (params.fm) {
+            try {
+                const finalmask = JSON.parse(params.fm);
+                proxy._finalmask = isPlainObject(finalmask)
+                    ? finalmask
+                    : params.fm;
+            } catch (e) {
+                proxy._finalmask = params.fm;
+            }
         }
 
         return proxy;
@@ -2107,7 +2130,6 @@ function URI_AnyTLS() {
         // eslint-disable-next-line no-unused-vars
         let [__, password, server, port, addons = '', name] =
             /^(.*?)@(.*?)(?::(\d+))?\/?(?:\?(.*?))?(?:#(.*?))?$/.exec(line);
-        password = decodeURIComponent(password);
         port = parseInt(`${port}`, 10);
         if (isNaN(port)) {
             port = 443;
@@ -2497,12 +2519,16 @@ function URI_Trojan() {
     };
 
     const parse = (line) => {
-        const matched = /^(trojan:\/\/.*?@.*?)(:(\d+))?\/?(\?.*?)?$/.exec(line);
+        // Split off the name first: with a "#name" but no query string, the port
+        // check below would not see the port and would append ":443" to the name.
+        let [newLine, name] = line.split(/#(.+)/, 2);
+        const matched = /^(trojan:\/\/.*?@.*?)(:(\d+))?\/?(\?.*?)?$/.exec(
+            newLine,
+        );
         const port = matched?.[2];
         if (!port) {
-            line = line.replace(matched[1], `${matched[1]}:443`);
+            newLine = newLine.replace(matched[1], `${matched[1]}:443`);
         }
-        let [newLine, name] = line.split(/#(.+)/, 2);
         const parser = getTrojanURIParser();
         const proxy = parser.parse(newLine);
         if (isNotBlank(name)) {
@@ -2542,12 +2568,14 @@ function Clash_All() {
                 'gost-relay',
                 'openvpn',
                 'tailscale',
+                'easytier',
                 'trusttunnel',
                 'h2-connect',
                 'naive',
                 'anytls',
                 'mieru',
                 'masque',
+                'masque-surge',
                 'sudoku',
                 'juicity',
                 'ss',
@@ -2812,6 +2840,9 @@ function Loon_WireGuard() {
         }
 
         let dns;
+        const serverDns = line.match(
+            /(?:^|,)\s*server-dns\s*=\s*(?:"([^"]*)"|([^"]*?))(?=\s*(?:,\s*[\w-]+\s*=|$))/i,
+        );
         let dnsv4 = line.match(/(,|^)\s*?dns\s*?=\s*?"?(.+?)"?\s*?(,|$)/i)?.[2];
         let dnsv6 = line.match(
             /(,|^)\s*?dnsv6\s*?=\s*?"?(.+?)"?\s*?(,|$)/i,
@@ -2859,6 +2890,10 @@ function Loon_WireGuard() {
             'allowed-ips': allowedIps,
             'preshared-key': preSharedKey,
             dns,
+            'server-dns': (serverDns?.[1] ?? serverDns?.[2])
+                ?.split(',')
+                .map((item) => item.trim())
+                .filter(Boolean),
             udp: true,
             peers: [
                 {
@@ -2967,7 +3002,7 @@ function Surge_Trojan() {
 }
 
 const LOON_ONLY_OPTIONS =
-    /(^|,)\s*(fast-open|over-tls|tls-name|ip-mode|tls-cert-sha256|tls-pubkey-sha256)\s*=/i;
+    /(^|,)\s*(fast-open|over-tls|tls-name|ip-mode|tls-cert-sha256|tls-pubkey-sha256|server-dns)\s*=/i;
 
 function Surge_Http() {
     const name = 'Surge HTTP Parser';
