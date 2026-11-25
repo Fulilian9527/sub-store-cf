@@ -2,7 +2,7 @@
 
 > 生成时间: 2026-04-23 15:11（最近更新: 2026-09-04）
 > 项目: sub-store-workers
-> 类型: project-level 
+> 类型: project-level codemap
 
 ## 1. 项目定位
 
